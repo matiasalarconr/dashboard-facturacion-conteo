@@ -22,13 +22,28 @@ const routes = [];
 const adj = [];
 const meta = [];
 
-for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.xlsx')).sort()) {
-  const wb = XLSX.readFile(path.join(dir, f));
+// Acumulado: si dos reportes cubren el mismo día, se usa el generado más recientemente.
+// "20-10-2026 13:22" -> "2026-10-20 13:22" para poder comparar.
+const genKey = s => { const m = /(\d{2})-(\d{2})-(\d{4})\s*(\d{2}:\d{2})?/.exec(s || ''); return m ? `${m[3]}-${m[2]}-${m[1]} ${m[4] || ''}` : ''; };
+const files = fs.readdirSync(dir).filter(f => /\.xlsx$/i.test(f) && !f.startsWith('~$')).map(f => {
+  const wb = XLSX.readFile(path.join(dir, f), { sheets: ['Resumen'] });
   const res = XLSX.utils.sheet_to_json(wb.Sheets['Resumen'], { header: 1, defval: null });
   const get = (label) => (res.find(r => r[0] === label) || [])[1];
-  meta.push({ archivo: f, desde: get('Desde'), hasta: get('Hasta'), generado: String(res[1][0]).replace('Generado el ', '') });
+  const generado = String((res[1] || [])[0] || '').replace('Generado el ', '');
+  return { archivo: f, desde: String(get('Desde') || ''), hasta: String(get('Hasta') || ''), generado, k: genKey(generado) + '|' + f };
+}).sort((a, b) => a.k < b.k ? -1 : 1);
+// Dueño de cada día = último reporte (por fecha de generación) cuyo rango lo incluye
+const owner = day => { let o = null; for (const x of files) if ((!x.desde || day >= x.desde) && (!x.hasta || day <= x.hasta)) o = x.archivo; return o; };
+
+for (const file of files) {
+  const f = file.archivo;
+  const wb = XLSX.readFile(path.join(dir, f));
+  let used = 0;
+  const keep = r => { const d = String(r['Día'] || ''); return owner(d) === f || owner(d) === null; };
 
   for (const r of XLSX.utils.sheet_to_json(wb.Sheets['Detalle'], { defval: null })) {
+    if (!keep(r)) continue;
+    used++;
     const d = D.dia.get(r['Día']), ru = D.ruta.get(r.Ruta), z = D.zona.get(r.Zona), t = D.tr.get(r.Transportista), c = D.cod.get(r['Código']);
     material[r['Código']] = r.Material;
     const fa = +r.Facturado || 0, co = +r.Conteo || 0, re = +r.Retornadas || 0, dif = co - fa;
@@ -43,11 +58,15 @@ for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.xlsx')).sort()) {
   }
 
   for (const r of XLSX.utils.sheet_to_json(wb.Sheets['Por ruta'], { defval: null })) {
+    if (!keep(r)) continue;
     routes.push([D.dia.get(r['Día']), D.ruta.get(r.Ruta), D.zona.get(r.Zona), D.tr.get(r.Transportista),
       r.Cobertura || '', r['Estado conteo'] || '', +r['Líneas'] || 0, +r['Líneas c/dif'] || 0,
       +r.Facturado || 0, +r.Conteo || 0, +r['Vol. esperado'] || 0]);
   }
+  meta.push({ archivo: f, desde: file.desde, hasta: file.hasta, generado: file.generado, lineas: used });
+  console.log(f, 'generado', file.generado, 'líneas usadas', used);
 }
+meta.sort((a, b) => a.desde < b.desde ? -1 : 1);
 
 // Columnar para reducir tamaño
 const cols = (rows, n) => Array.from({ length: n }, (_, i) => rows.map(r => r[i]));

@@ -14,13 +14,14 @@ Panel web para analizar las auditorías de transportista (facturado vs contado) 
 
 Filtros globales: mes, rango de fechas, transportista, zona, ruta y producto. Todas las tablas se pueden ordenar y exportar a CSV.
 
-## Actualizar con nuevos reportes
+## Subir un reporte nuevo (acumulado)
 
-1. Deja todos los `.xlsx` en una carpeta (ej. `excels/`).
-2. Ejecuta:
-   ```bash
-   cd scripts && npm install && node build_data.js ../excels ../data.json
-   ```
-3. Haz commit y push de `data.json`. GitHub Pages se actualiza en 1–2 minutos.
+1. En el panel pulsa **⬆ Subir reporte** (o entra a la carpeta [`excels/`](excels) → *Add file → Upload files*).
+2. Arrastra el Excel y pulsa **Commit changes**.
+3. La Action *Publicar dashboard* recalcula el acumulado con todos los Excel de `excels/` y republica el sitio (2–4 min).
+
+Si dos reportes cubren el mismo día, se usa el que tiene la fecha de generación más reciente (celda "Generado el …" de la hoja Resumen), así que se puede volver a subir un mes sin duplicar.
+
+Para generar los datos en local: `cd scripts && npm install && node build_data.js ../excels ../data.json`.
 
 La diferencia se calcula como `conteo − facturado` por línea.

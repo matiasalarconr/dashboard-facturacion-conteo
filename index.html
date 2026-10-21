@@ -61,7 +61,7 @@ h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
 .reset { font: inherit; background: transparent; border: 0; color: var(--accent); cursor: pointer; padding: 6px 4px; }
 
 /* Tabs */
-.tabs { display: flex; gap: 4px; margin-bottom: 16px; overflow-x: auto; }
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; overflow-x: auto; scrollbar-width: none; }
 .tabs button { font: inherit; font-weight: 600; background: transparent; border: 0; color: var(--ink-2); padding: 8px 14px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
 .tabs button.on { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--border); }
 .panel { display: none; }
@@ -120,7 +120,10 @@ footer { color: var(--muted); font-size: 12px; margin-top: 28px; }
       <h1>Facturación vs Conteo · Auditorías de transportista</h1>
       <div class="sub" id="periodo">Cargando…</div>
     </div>
-    <button class="icon-btn" id="theme" title="Cambiar tema">◐ Tema</button>
+    <div style="display:flex;gap:8px">
+      <a class="btn" href="https://github.com/matiasalarconr/dashboard-facturacion-conteo/upload/main/excels" target="_blank" rel="noopener" style="text-decoration:none">⬆ Subir reporte</a>
+      <button class="icon-btn" id="theme" title="Cambiar tema">◐ Tema</button>
+    </div>
   </header>
 
   <div class="filters">
@@ -141,6 +144,7 @@ footer { color: var(--muted); font-size: 12px; margin-top: 28px; }
     <button data-t="rutas">Transportistas y rutas</button>
     <button data-t="productos">Productos</button>
     <button data-t="ajustes">Ajustes (detalle)</button>
+    <button data-t="reportes">Reportes cargados</button>
   </nav>
 
   <div id="loading">Cargando datos…</div>
@@ -252,6 +256,27 @@ footer { color: var(--muted); font-size: 12px; margin-top: 28px; }
     </div>
   </section>
 
+  <!-- REPORTES -->
+  <section class="panel" id="p-reportes">
+    <div class="grid">
+      <div class="card c8">
+        <h2>Reportes en el acumulado</h2>
+        <div class="desc">Si dos reportes cubren el mismo día, se usa el generado más recientemente; el otro queda reemplazado para esos días.</div>
+        <div class="tbl-wrap"><table id="t-rep"></table></div>
+      </div>
+      <div class="card c4">
+        <h2>Cómo subir un reporte nuevo</h2>
+        <ol style="padding-left:18px;margin:10px 0 0;color:var(--ink-2)">
+          <li>Descarga el Excel del sistema (mismo formato: hojas Resumen, Por ruta y Detalle).</li>
+          <li>Pulsa <b>⬆ Subir reporte</b> (requiere cuenta de GitHub con permiso de escritura en el repositorio).</li>
+          <li>Arrastra el archivo y pulsa <b>Commit changes</b>.</li>
+          <li>En 2–4 minutos el panel se recalcula solo. Recarga la página.</li>
+        </ol>
+        <p class="note">Puedes volver a subir un mes que ya existe (por ejemplo, octubre completo): reemplaza los días que se solapan sin duplicar.</p>
+      </div>
+    </div>
+  </section>
+
   <footer id="foot"></footer>
 </div>
 
@@ -287,9 +312,11 @@ fetch('data.json').then(r => r.json()).then(d => {
   DB.prodLabel = dm.cod.map((c, i) => c + ' · ' + dm.mat[i]);
   initFilters();
   document.getElementById('loading').remove();
-  const m = d.meta;
-  document.getElementById('periodo').textContent = 'Período ' + fecha(m[0].desde) + '-' + m[0].desde.slice(0, 4) + ' al ' + fecha(m[m.length - 1].hasta) + '-' + m[m.length - 1].hasta.slice(0, 4) + ' · ' + m.length + ' reportes';
-  document.getElementById('foot').textContent = 'Fuente: ' + m.map(x => x.archivo + ' (generado ' + x.generado + ')').join(' · ');
+  const dias = dm.dia.filter(Boolean).sort(), dmy = s => fecha(s) + '-' + s.slice(0, 4);
+  document.getElementById('periodo').textContent = 'Período ' + dmy(dias[0]) + ' al ' + dmy(dias[dias.length - 1]) + ' · ' + d.meta.length + ' reportes cargados';
+  document.getElementById('foot').textContent = 'Datos de ' + d.meta.length + ' reportes Excel (hoja Detalle y Por ruta). Ver pestaña "Reportes cargados".';
+  document.getElementById('t-rep').innerHTML = '<thead><tr><th>Archivo</th><th>Desde</th><th>Hasta</th><th>Generado</th><th class="num">Líneas usadas</th></tr></thead><tbody>' +
+    d.meta.map(x => '<tr><td>' + esc(x.archivo) + '</td><td>' + esc(x.desde) + '</td><td>' + esc(x.hasta) + '</td><td>' + esc(x.generado) + '</td><td class="num">' + (x.lineas ? fmt(x.lineas) : '<span class="tag Pendiente">Reemplazado</span>') + '</td></tr>').join('') + '</tbody>';
   render();
 }).catch(e => { document.getElementById('loading').textContent = 'No se pudieron cargar los datos: ' + e.message; });
 
