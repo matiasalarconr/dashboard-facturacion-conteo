@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Facturación vs Conteo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f3f2ef;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s1-soft: #cde2fb;
+  --bad: #d03b3b; --bad-soft: #fbe3e3; --good: #006300; --good-soft: #e1f3e1; --warn: #9a6a00;
+  --accent: #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232322;
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s1-soft: #184f95;
+    --bad: #e66767; --bad-soft: #3a1f1f; --good: #0ca30c; --good-soft: #17301a; --warn: #fab219;
+    --accent: #3987e5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232322;
+  --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s1-soft: #184f95;
+  --bad: #e66767; --bad-soft: #3a1f1f; --good: #0ca30c; --good-soft: #17301a; --warn: #fab219;
+  --accent: #3987e5;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1400px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+.sub { color: var(--ink-2); font-size: 13px; margin-top: 2px; }
+.icon-btn { background: var(--surface); border: 1px solid var(--border); color: var(--ink-2); border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit; }
+.icon-btn:hover { color: var(--ink); }
+
+/* Filtros */
+.filters { position: sticky; top: 0; z-index: 10; background: var(--page); padding: 10px 0 12px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+@media (max-width: 900px) { .filters { position: static; } }
+.frow { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.f { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.f label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+.f select, .f input { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; min-width: 0; }
+.f select { max-width: 200px; }
+.f input[type=date] { width: 140px; }
+.f input.search { width: 220px; }
+.seg { display: inline-flex; background: var(--surface-2); border-radius: 9px; padding: 2px; }
+.seg button { font: inherit; border: 0; background: transparent; color: var(--ink-2); padding: 5px 11px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.seg button.on { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--border); font-weight: 600; }
+.reset { font: inherit; background: transparent; border: 0; color: var(--accent); cursor: pointer; padding: 6px 4px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; overflow-x: auto; }
+.tabs button { font: inherit; font-weight: 600; background: transparent; border: 0; color: var(--ink-2); padding: 8px 14px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+.tabs button.on { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--border); }
+.panel { display: none; }
+.panel.on { display: block; }
+
+/* KPIs */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.kpi .l { font-size: 12px; color: var(--ink-2); }
+.kpi .v { font-size: 22px; white-space: nowrap; font-weight: 650; margin-top: 4px; letter-spacing: -0.01em; }
+.kpi .n { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.kpi .v.bad { color: var(--bad); }
+.kpi .v.good { color: var(--good); }
+
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; grid-column: span 12; min-width: 0; }
+.c6 { grid-column: span 6; } .c4 { grid-column: span 4; } .c8 { grid-column: span 8; }
+@media (max-width: 960px) { .c6, .c4, .c8 { grid-column: span 12; } }
+.card h2 { font-size: 15px; margin: 0; }
+.card .desc { color: var(--ink-2); font-size: 12px; margin: 2px 0 12px; }
+.ch { position: relative; height: 280px; }
+.ch.tall { height: 380px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); margin-bottom: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+
+/* Tablas */
+.tbl-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--surface-2); font-weight: 600; color: var(--ink-2); cursor: pointer; user-select: none; font-size: 12px; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+th .ar { color: var(--muted); margin-left: 3px; }
+tbody tr:hover { background: var(--surface-2); }
+td.neg { color: var(--bad); font-weight: 600; }
+td.pos { color: var(--good); font-weight: 600; }
+.tag { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; }
+.tag.Faltante { background: var(--bad-soft); color: var(--bad); }
+.tag.Sobrante { background: var(--good-soft); color: var(--good); }
+.tag.Cuadrado, .tag.Contada { background: var(--surface-2); color: var(--ink-2); }
+.tag.Pendiente { background: var(--surface-2); color: var(--warn); }
+.pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 10px; color: var(--ink-2); font-size: 13px; }
+.pager button { font: inherit; background: var(--surface); border: 1px solid var(--border); color: var(--ink); border-radius: 7px; padding: 4px 10px; cursor: pointer; }
+.pager button:disabled { opacity: .4; cursor: default; }
+.btn { font: inherit; background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; font-weight: 600; }
+.empty { color: var(--muted); padding: 24px; text-align: center; }
+#loading { padding: 60px; text-align: center; color: var(--ink-2); }
+.note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+footer { color: var(--muted); font-size: 12px; margin-top: 28px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Facturación vs Conteo · Auditorías de transportista</h1>
+      <div class="sub" id="periodo">Cargando…</div>
+    </div>
+    <button class="icon-btn" id="theme" title="Cambiar tema">◐ Tema</button>
+  </header>
+
+  <div class="filters">
+    <div class="frow">
+      <div class="f"><label>Mes</label><div class="seg" id="f-mes"></div></div>
+      <div class="f"><label>Desde</label><input type="date" id="f-desde"></div>
+      <div class="f"><label>Hasta</label><input type="date" id="f-hasta"></div>
+      <div class="f"><label>Transportista</label><select id="f-tr"></select></div>
+      <div class="f"><label>Zona</label><select id="f-zona"></select></div>
+      <div class="f"><label>Ruta</label><select id="f-ruta"></select></div>
+      <div class="f"><label>Producto</label><input class="search" id="f-prod" list="dl-prod" placeholder="Código o descripción"><datalist id="dl-prod"></datalist></div>
+      <button class="reset" id="f-reset">Limpiar filtros</button>
+    </div>
+  </div>
+
+  <nav class="tabs" id="tabs">
+    <button data-t="resumen" class="on">Resumen</button>
+    <button data-t="rutas">Transportistas y rutas</button>
+    <button data-t="productos">Productos</button>
+    <button data-t="ajustes">Ajustes (detalle)</button>
+  </nav>
+
+  <div id="loading">Cargando datos…</div>
+
+  <!-- RESUMEN -->
+  <section class="panel on" id="p-resumen">
+    <div class="kpis" id="kpis"></div>
+    <div class="grid">
+      <div class="card c8">
+        <h2>Diferencia diaria (conteo − facturado)</h2>
+        <div class="desc">Unidades por día de entrega. Barras hacia abajo = faltantes.</div>
+        <div class="ch"><canvas id="c-dia"></canvas></div>
+      </div>
+      <div class="card c4">
+        <h2>Comparación mensual</h2>
+        <div class="desc">Diferencia total en unidades por mes.</div>
+        <div class="ch"><canvas id="c-mes"></canvas></div>
+      </div>
+      <div class="card c6">
+        <h2>Ítems con diferencia por día</h2>
+        <div class="desc">Cantidad de líneas de detalle ajustadas.</div>
+        <div class="legend"><span><i style="background:var(--bad)"></i>Faltantes</span><span><i style="background:var(--s1)"></i>Sobrantes</span></div>
+        <div class="ch"><canvas id="c-items"></canvas></div>
+      </div>
+      <div class="card c6">
+        <h2>Cobertura de rutas por día</h2>
+        <div class="desc">Rutas planificadas: contadas vs pendientes (hoja "Por ruta"; no aplica filtro de producto).</div>
+        <div class="legend"><span><i style="background:var(--s1)"></i>Contadas</span><span><i style="background:var(--axis)"></i>Pendientes</span></div>
+        <div class="ch"><canvas id="c-cob"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Resumen por mes</h2>
+        <div class="desc">Totales del filtro actual, separados por mes.</div>
+        <div class="tbl-wrap"><table id="t-mes"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RUTAS -->
+  <section class="panel" id="p-rutas">
+    <div class="grid">
+      <div class="card c6">
+        <h2>Transportistas con más faltante</h2>
+        <div class="desc">Unidades faltantes (top 15). Haz clic en una barra para filtrar.</div>
+        <div class="ch tall"><canvas id="c-tr"></canvas></div>
+      </div>
+      <div class="card c6">
+        <h2>Zonas con más faltante</h2>
+        <div class="desc">Unidades faltantes (top 15). Haz clic en una barra para filtrar.</div>
+        <div class="ch tall"><canvas id="c-zona"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Transportistas</h2>
+        <div class="desc">Clic en encabezado para ordenar.</div>
+        <div class="tbl-wrap"><table id="t-tr"></table></div>
+      </div>
+      <div class="card">
+        <div class="tbl-tools">
+          <div><h2>Rutas por día</h2><div class="desc" style="margin:2px 0 0">Una fila por ruta planificada (incluye pendientes).</div></div>
+          <div class="frow">
+            <div class="f"><label>Cobertura</label><select id="r-cob"><option value="">Todas</option><option>Contada</option><option>Pendiente</option></select></div>
+            <div class="f"><label>Solo con diferencia</label><select id="r-dif"><option value="">No</option><option value="1">Sí</option></select></div>
+            <button class="btn" id="r-csv">Exportar CSV</button>
+          </div>
+        </div>
+        <div class="tbl-wrap"><table id="t-rutas"></table></div>
+        <div class="pager" id="pg-rutas"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRODUCTOS -->
+  <section class="panel" id="p-productos">
+    <div class="grid">
+      <div class="card">
+        <h2>Productos con más faltante</h2>
+        <div class="desc">Unidades faltantes (top 20). Haz clic en una barra para filtrar por ese producto.</div>
+        <div class="ch tall" style="height:480px"><canvas id="c-prod"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="tbl-tools">
+          <div><h2>Todos los productos</h2></div>
+          <div class="frow">
+            <div class="f"><label>Buscar</label><input class="search" id="p-q" placeholder="Código o descripción"></div>
+            <button class="btn" id="p-csv">Exportar CSV</button>
+          </div>
+        </div>
+        <div class="tbl-wrap"><table id="t-prod"></table></div>
+        <div class="pager" id="pg-prod"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AJUSTES -->
+  <section class="panel" id="p-ajustes">
+    <div class="grid">
+      <div class="card">
+        <div class="tbl-tools">
+          <div><h2>Ajustes realizados</h2><div class="desc" style="margin:2px 0 0">Líneas de la hoja Detalle con diferencia o unidades retornadas.</div></div>
+          <div class="frow">
+            <div class="f"><label>Estado</label><select id="a-est"><option value="">Todos</option><option>Faltante</option><option>Sobrante</option><option value="ret">Con retornadas</option></select></div>
+            <div class="f"><label>Buscar</label><input class="search" id="a-q" placeholder="Entrega, factura, doc…"></div>
+            <button class="btn" id="a-csv">Exportar CSV</button>
+          </div>
+        </div>
+        <div class="tbl-wrap"><table id="t-adj"></table></div>
+        <div class="pager" id="pg-adj"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const nf = new Intl.NumberFormat('es-CL');
+const pf = v => (v * 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+const fmt = v => nf.format(v);
+const sgn = v => (v > 0 ? '+' : '') + nf.format(v);
+const mesLabel = ym => MESES[+ym.slice(5, 7) - 1] + ' ' + ym.slice(0, 4);
+const fecha = s => s.slice(8, 10) + '-' + s.slice(5, 7);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+let DB, F = { mes: '', desde: '', hasta: '', tr: '', zona: '', ruta: '', prod: '' };
+const charts = {};
+
+// ---------- Tema ----------
+try { const t = localStorage.getItem('fc-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+document.getElementById('theme').onclick = () => {
+  const dark = getComputedStyle(document.documentElement).colorScheme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  try { localStorage.setItem('fc-theme', document.documentElement.dataset.theme); } catch (e) {}
+  render();
+};
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+// ---------- Carga ----------
+fetch('data.json').then(r => r.json()).then(d => {
+  DB = d;
+  const dm = d.dims;
+  DB.diaMes = dm.dia.map(x => x.slice(0, 7));
+  DB.meses = [...new Set(DB.diaMes)].filter(Boolean).sort();
+  DB.prodLabel = dm.cod.map((c, i) => c + ' · ' + dm.mat[i]);
+  initFilters();
+  document.getElementById('loading').remove();
+  const m = d.meta;
+  document.getElementById('periodo').textContent = 'Período ' + fecha(m[0].desde) + '-' + m[0].desde.slice(0, 4) + ' al ' + fecha(m[m.length - 1].hasta) + '-' + m[m.length - 1].hasta.slice(0, 4) + ' · ' + m.length + ' reportes';
+  document.getElementById('foot').textContent = 'Fuente: ' + m.map(x => x.archivo + ' (generado ' + x.generado + ')').join(' · ');
+  render();
+}).catch(e => { document.getElementById('loading').textContent = 'No se pudieron cargar los datos: ' + e.message; });
+
+// ---------- Filtros ----------
+function opts(sel, values, all) {
+  sel.innerHTML = '<option value="">' + all + '</option>' + values.map(v => '<option value="' + esc(v[0]) + '">' + esc(v[1]) + '</option>').join('');
+}
+function initFilters() {
+  const dm = DB.dims;
+  const seg = document.getElementById('f-mes');
+  seg.innerHTML = '<button data-m="" class="on">Todos</button>' + DB.meses.map(m => '<button data-m="' + m + '">' + mesLabel(m) + '</button>').join('');
+  seg.onclick = e => { const b = e.target.closest('button'); if (!b) return; F.mes = b.dataset.m; F.desde = F.hasta = ''; syncInputs(); render(); };
+  const byName = (list) => list.map((v, i) => [String(i), v]).filter(x => x[1] !== '').sort((a, b) => a[1].localeCompare(b[1], 'es', { numeric: true }));
+  opts(document.getElementById('f-tr'), byName(dm.tr), 'Todos');
+  opts(document.getElementById('f-zona'), byName(dm.zona), 'Todas');
+  opts(document.getElementById('f-ruta'), byName(dm.ruta), 'Todas');
+  document.getElementById('dl-prod').innerHTML = DB.prodLabel.map(l => '<option value="' + esc(l) + '">').join('');
+  const dias = [...dm.dia].filter(Boolean).sort();
+  for (const id of ['f-desde', 'f-hasta']) { const el = document.getElementById(id); el.min = dias[0]; el.max = dias[dias.length - 1]; }
+  const on = (id, key, ev = 'change') => document.getElementById(id).addEventListener(ev, e => { F[key] = e.target.value; if (key === 'desde' || key === 'hasta') F.mes = ''; syncInputs(); render(); });
+  on('f-desde', 'desde'); on('f-hasta', 'hasta'); on('f-tr', 'tr'); on('f-zona', 'zona'); on('f-ruta', 'ruta');
+  document.getElementById('f-prod').addEventListener('change', e => {
+    const v = e.target.value.trim();
+    const i = DB.prodLabel.indexOf(v);
+    F.prod = i >= 0 ? String(i) : (v ? 'q:' + v.toLowerCase() : '');
+    render();
+  });
+  document.getElementById('f-reset').onclick = () => { F = { mes: '', desde: '', hasta: '', tr: '', zona: '', ruta: '', prod: '' }; document.getElementById('f-prod').value = ''; syncInputs(); render(); };
+  document.getElementById('tabs').onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === 'p-' + b.dataset.t));
+    render();
+  };
+  for (const id of ['r-cob', 'r-dif']) document.getElementById(id).onchange = () => { pages.rutas = 0; renderRutasTable(); };
+  document.getElementById('a-est').onchange = () => { pages.adj = 0; renderAdj(); };
+  document.getElementById('a-q').oninput = () => { pages.adj = 0; renderAdj(); };
+  document.getElementById('p-q').oninput = () => { pages.prod = 0; renderProdTable(); };
+}
+function syncInputs() {
+  document.querySelectorAll('#f-mes button').forEach(b => b.classList.toggle('on', b.dataset.m === F.mes));
+  document.getElementById('f-desde').value = F.desde; document.getElementById('f-hasta').value = F.hasta;
+  document.getElementById('f-tr').value = F.tr; document.getElementById('f-zona').value = F.zona; document.getElementById('f-ruta').value = F.ruta;
+}
+
+// Máscaras de índices de día y producto que pasan el filtro
+function dayMask() {
+  return DB.dims.dia.map((d, i) => !!d && (!F.mes || DB.diaMes[i] === F.mes) && (!F.desde || d >= F.desde) && (!F.hasta || d <= F.hasta));
+}
+function prodMask() {
+  if (!F.prod) return null;
+  if (!F.prod.startsWith('q:')) { const m = DB.dims.cod.map(() => false); m[+F.prod] = true; return m; }
+  const q = F.prod.slice(2);
+  return DB.prodLabel.map(l => l.toLowerCase().includes(q));
+}
+const eqOr = (f, v) => f === '' || +f === v;
+
+// ---------- Agregación ----------
+function aggregate() {
+  const [cd, cr, cz, ct, cc, cl, cf, cn, cret, cfal, csob] = DB.cube;
+  const dm = dayMask(), pm = prodMask();
+  const tr = F.tr, zo = F.zona, ru = F.ruta;
+  const nD = DB.dims.dia.length;
+  const byDay = Array.from({ length: nD }, () => [0, 0, 0, 0, 0, 0]); // fact, conteo, falt u., sob u., items falt, items sob
+  const byTr = new Map(), byZona = new Map(), byProd = new Map();
+  const T = { l: 0, f: 0, c: 0, ret: 0, ifal: 0, isob: 0 };
+  const add = (m, k, l, f, c, r, ifa, iso) => { let e = m.get(k); if (!e) m.set(k, e = [0, 0, 0, 0, 0, 0]); e[0] += l; e[1] += f; e[2] += c; e[3] += r; e[4] += ifa; e[5] += iso; };
+  for (let i = 0, n = cd.length; i < n; i++) {
+    const d = cd[i];
+    if (!dm[d] || !eqOr(tr, ct[i]) || !eqOr(zo, cz[i]) || !eqOr(ru, cr[i]) || (pm && !pm[cc[i]])) continue;
+    const l = cl[i], f = cf[i], c = cn[i], r = cret[i], ifa = cfal[i], iso = csob[i];
+    T.l += l; T.f += f; T.c += c; T.ret += r; T.ifal += ifa; T.isob += iso;
+    const b = byDay[d]; b[0] += f; b[1] += c; b[4] += ifa; b[5] += iso;
+    add(byTr, ct[i], l, f, c, r, ifa, iso); add(byZona, cz[i], l, f, c, r, ifa, iso); add(byProd, cc[i], l, f, c, r, ifa, iso);
+  }
+  return { T, byDay, byTr, byZona, byProd, dm, pm };
+}
+function routeRows(dm) {
+  const [d, r, z, t, cob, est, lin, lind, fa, co, vol] = DB.routes;
+  const out = [];
+  for (let i = 0; i < d.length; i++) {
+    if (!dm[d[i]] || !eqOr(F.tr, t[i]) || !eqOr(F.zona, z[i]) || !eqOr(F.ruta, r[i])) continue;
+    out.push({ d: d[i], r: r[i], z: z[i], t: t[i], cob: cob[i], est: est[i], lin: lin[i], lind: lind[i], fa: fa[i], co: co[i], dif: co[i] - fa[i], vol: vol[i] });
+  }
+  return out;
+}
+
+// ---------- Render ----------
+let A, R;
+function render() {
+  if (!DB) return;
+  A = aggregate(); R = routeRows(A.dm);
+  renderKpis();
+  const tab = document.querySelector('#tabs button.on').dataset.t;
+  if (tab === 'resumen') renderResumen();
+  if (tab === 'rutas') renderRutas();
+  if (tab === 'productos') renderProductos();
+  if (tab === 'ajustes') renderAdj();
+}
+
+function renderKpis() {
+  const T = A.T, dif = T.c - T.f;
+  const planned = R.length, counted = R.filter(x => x.cob === 'Contada').length;
+  const k = [
+    ['Total facturado', fmt(T.f) + ' u.', fmt(T.l) + ' líneas contadas'],
+    ['Total conteo', fmt(T.c) + ' u.', ''],
+    ['Diferencia', sgn(dif) + ' u.', 'conteo − facturado', dif < 0 ? 'bad' : dif > 0 ? 'good' : ''],
+    ['% diferencia', T.f ? pf(dif / T.f) : '—', 'sobre lo facturado', dif < 0 ? 'bad' : ''],
+    ['Ítems con diferencia', fmt(T.ifal + T.isob), fmt(T.ifal) + ' faltantes · ' + fmt(T.isob) + ' sobrantes'],
+    ['Cobertura de rutas', planned ? pf(counted / planned).replace(',00', '') : '—', fmt(counted) + ' de ' + fmt(planned) + ' rutas contadas'],
+    ['Retornadas', fmt(T.ret) + ' u.', ''],
+  ];
+  document.getElementById('kpis').innerHTML = k.map(x => '<div class="kpi"><div class="l">' + x[0] + '</div><div class="v ' + (x[3] || '') + '">' + x[1] + '</div><div class="n">' + x[2] + '</div></div>').join('');
+}
+
+function baseOpts(extra = {}) {
+  const ink2 = css('--ink-2'), grid = css('--grid'), muted = css('--muted');
+  Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+  Chart.defaults.color = muted;
+  return Object.assign({
+    responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: { backgroundColor: css('--surface'), titleColor: css('--ink'), bodyColor: ink2, borderColor: css('--axis'), borderWidth: 1, padding: 10, boxPadding: 4, usePointStyle: true },
+    },
+    scales: {
+      x: { grid: { display: false }, border: { color: css('--axis') }, ticks: { color: muted, maxRotation: 0, autoSkipPadding: 8 } },
+      y: { grid: { color: grid }, border: { display: false }, ticks: { color: muted, callback: v => nf.format(v) } },
+    },
+  }, extra);
+}
+function draw(id, cfg) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), cfg);
+}
+const sortedDays = () => DB.dims.dia.map((d, i) => [d, i]).filter(x => A.dm[x[1]]).sort((a, b) => a[0] < b[0] ? -1 : 1);
+
+function renderResumen() {
+  const days = sortedDays();
+  const labels = days.map(x => fecha(x[0]));
+  const difs = days.map(x => A.byDay[x[1]][1] - A.byDay[x[1]][0]);
+  const bad = css('--bad'), s1 = css('--s1'), axis = css('--axis');
+  draw('c-dia', { type: 'bar', data: { labels, datasets: [{ label: 'Diferencia (u.)', data: difs, backgroundColor: difs.map(v => v < 0 ? bad : s1), borderRadius: 4, borderSkipped: 'start', maxBarThickness: 22 }] },
+    options: baseOpts({ plugins: Object.assign(baseOpts().plugins, { tooltip: Object.assign(baseOpts().plugins.tooltip, { callbacks: {
+      title: it => days[it[0].dataIndex][0],
+      label: it => { const b = A.byDay[days[it.dataIndex][1]]; return ['Diferencia: ' + sgn(it.raw) + ' u.', 'Facturado: ' + fmt(b[0]) + ' u.', 'Conteo: ' + fmt(b[1]) + ' u.']; } } }) }) }) });
+
+  // Mensual
+  const pm = {};
+  days.forEach(([d, i]) => { const m = d.slice(0, 7); pm[m] = pm[m] || [0, 0, 0, 0]; const b = A.byDay[i]; pm[m][0] += b[0]; pm[m][1] += b[1]; pm[m][2] += b[4]; pm[m][3] += b[5]; });
+  const ms = Object.keys(pm).sort();
+  const mdif = ms.map(m => pm[m][1] - pm[m][0]);
+  draw('c-mes', { type: 'bar', data: { labels: ms.map(mesLabel), datasets: [{ label: 'Diferencia (u.)', data: mdif, backgroundColor: mdif.map(v => v < 0 ? bad : s1), borderRadius: 4, borderSkipped: 'start', maxBarThickness: 56 }] },
+    options: baseOpts({ plugins: Object.assign(baseOpts().plugins, { tooltip: Object.assign(baseOpts().plugins.tooltip, { callbacks: {
+      label: it => { const v = pm[ms[it.dataIndex]]; return ['Diferencia: ' + sgn(it.raw) + ' u.', '% dif.: ' + (v[0] ? pf((v[1] - v[0]) / v[0]) : '—'), 'Facturado: ' + fmt(v[0]) + ' u.']; } } }) }) }) });
+
+  draw('c-items', { type: 'bar', data: { labels, datasets: [
+      { label: 'Faltantes', data: days.map(x => A.byDay[x[1]][4]), backgroundColor: bad, borderRadius: 4, maxBarThickness: 22 },
+      { label: 'Sobrantes', data: days.map(x => A.byDay[x[1]][5]), backgroundColor: s1, borderRadius: 4, maxBarThickness: 22 }] },
+    options: baseOpts({ scales: Object.assign(baseOpts().scales, { x: Object.assign(baseOpts().scales.x, { stacked: true }), y: Object.assign(baseOpts().scales.y, { stacked: true }) }) }) });
+
+  // Cobertura
+  const cov = {};
+  R.forEach(x => { const d = DB.dims.dia[x.d]; cov[d] = cov[d] || [0, 0]; cov[d][x.cob === 'Contada' ? 0 : 1]++; });
+  const cd = Object.keys(cov).sort();
+  draw('c-cob', { type: 'bar', data: { labels: cd.map(fecha), datasets: [
+      { label: 'Contadas', data: cd.map(d => cov[d][0]), backgroundColor: s1, borderRadius: 0, maxBarThickness: 22 },
+      { label: 'Pendientes', data: cd.map(d => cov[d][1]), backgroundColor: axis, borderRadius: { topLeft: 4, topRight: 4 }, maxBarThickness: 22 }] },
+    options: baseOpts({ scales: Object.assign(baseOpts().scales, { x: Object.assign(baseOpts().scales.x, { stacked: true }), y: Object.assign(baseOpts().scales.y, { stacked: true }) }) }) });
+
+  // Tabla mensual
+  const covM = {};
+  R.forEach(x => { const m = DB.diaMes[x.d]; covM[m] = covM[m] || [0, 0]; covM[m][1]++; if (x.cob === 'Contada') covM[m][0]++; });
+  document.getElementById('t-mes').innerHTML = '<thead><tr><th>Mes</th><th class="num">Facturado</th><th class="num">Conteo</th><th class="num">Diferencia</th><th class="num">% Dif.</th><th class="num">Ítems faltantes</th><th class="num">Ítems sobrantes</th><th class="num">Rutas contadas</th><th class="num">Cobertura</th></tr></thead><tbody>' +
+    (ms.length ? ms.map(m => { const v = pm[m], d = v[1] - v[0], c = covM[m] || [0, 0]; return '<tr><td>' + mesLabel(m) + '</td><td class="num">' + fmt(v[0]) + '</td><td class="num">' + fmt(v[1]) + '</td><td class="num ' + (d < 0 ? 'neg' : d > 0 ? 'pos' : '') + '">' + sgn(d) + '</td><td class="num">' + (v[0] ? pf(d / v[0]) : '—') + '</td><td class="num">' + fmt(v[2]) + '</td><td class="num">' + fmt(v[3]) + '</td><td class="num">' + fmt(c[0]) + ' / ' + fmt(c[1]) + '</td><td class="num">' + (c[1] ? pf(c[0] / c[1]) : '—') + '</td></tr>'; }).join('')
+      : '<tr><td colspan="9" class="empty">Sin datos para este filtro</td></tr>') + '</tbody>';
+}
+
+function hbar(id, entries, names, onPick) {
+  const top = entries.filter(e => e[1][1] - e[1][2] > 0).sort((a, b) => (b[1][1] - b[1][2]) - (a[1][1] - a[1][2])).slice(0, id === 'c-prod' ? 20 : 15);
+  draw(id, { type: 'bar', data: { labels: top.map(e => names(e[0])), datasets: [{ label: 'Faltante (u.)', data: top.map(e => e[1][1] - e[1][2]), backgroundColor: css('--bad'), borderRadius: 4, borderSkipped: 'start', maxBarThickness: 18 }] },
+    options: baseOpts({ indexAxis: 'y', interaction: { mode: 'nearest', axis: 'y', intersect: false },
+      onClick: (e, els) => { if (els.length) onPick(top[els[0].index][0]); },
+      onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+      plugins: Object.assign(baseOpts().plugins, { tooltip: Object.assign(baseOpts().plugins.tooltip, { callbacks: {
+        label: it => { const v = top[it.dataIndex][1]; return ['Faltante: ' + fmt(it.raw) + ' u.', 'Facturado: ' + fmt(v[1]) + ' u.', 'Ítems con faltante: ' + fmt(v[4]), '% dif.: ' + (v[1] ? pf((v[2] - v[1]) / v[1]) : '—')]; } } }) }),
+      scales: { x: { grid: { color: css('--grid') }, border: { display: false }, ticks: { color: css('--muted'), callback: v => nf.format(v) } }, y: { grid: { display: false }, border: { color: css('--axis') }, ticks: { color: css('--ink-2'), autoSkip: false } } } }) });
+  if (!top.length) { const c = charts[id]; c.options.plugins.title = { display: true, text: 'Sin faltantes para este filtro', color: css('--muted') }; c.update(); }
+}
+
+// ---------- Tablas genéricas ----------
+const pages = { rutas: 0, prod: 0, adj: 0, tr: 0 };
+const sorts = { rutas: ['dif', 1], prod: ['falt', -1], adj: ['dif', 1], tr: ['falt', -1] };
+const PAGE = 50;
+function table(key, el, cols, rows, pagerId) {
+  const [sk, sd] = sorts[key];
+  const col = cols.find(c => c.k === sk);
+  rows.sort((a, b) => { const x = a[sk], y = b[sk]; return (typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { numeric: true })) * sd; });
+  const pg = pagerId ? Math.min(pages[key], Math.max(0, Math.ceil(rows.length / PAGE) - 1)) : 0;
+  pages[key] = pg;
+  const view = pagerId ? rows.slice(pg * PAGE, pg * PAGE + PAGE) : rows;
+  el.innerHTML = '<thead><tr>' + cols.map(c => '<th data-k="' + c.k + '" class="' + (c.num ? 'num' : '') + '">' + c.t + (c.k === sk ? '<span class="ar">' + (sd > 0 ? '▲' : '▼') + '</span>' : '') + '</th>').join('') + '</tr></thead><tbody>' +
+    (view.length ? view.map(r => '<tr>' + cols.map(c => { const v = r[c.k]; const cls = (c.num ? 'num ' : '') + (c.sign ? (v < 0 ? 'neg' : v > 0 ? 'pos' : '') : ''); return '<td class="' + cls + '">' + (c.f ? c.f(v, r) : esc(v)) + '</td>'; }).join('') + '</tr>').join('')
+      : '<tr><td colspan="' + cols.length + '" class="empty">Sin registros para este filtro</td></tr>') + '</tbody>';
+  el.querySelectorAll('th').forEach(th => th.onclick = () => { const k = th.dataset.k; sorts[key] = [k, sorts[key][0] === k ? -sorts[key][1] : (cols.find(c => c.k === k).num ? -1 : 1)]; table(key, el, cols, rows, pagerId); });
+  if (pagerId) {
+    const n = Math.ceil(rows.length / PAGE) || 1, p = document.getElementById(pagerId);
+    p.innerHTML = '<span>' + fmt(rows.length) + ' registros · página ' + (pg + 1) + ' de ' + n + '</span><button ' + (pg ? '' : 'disabled') + ' data-d="-1">‹ Anterior</button><button ' + (pg < n - 1 ? '' : 'disabled') + ' data-d="1">Siguiente ›</button>';
+    p.querySelectorAll('button').forEach(b => b.onclick = () => { pages[key] += +b.dataset.d; table(key, el, cols, rows, pagerId); });
+  }
+}
+function csv(name, cols, rows) {
+  const q = v => { v = v == null ? '' : String(v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const txt = '﻿' + [cols.map(c => q(c.t)).join(';')].concat(rows.map(r => cols.map(c => q(c.csv ? c.csv(r[c.k], r) : r[c.k])).join(';'))).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([txt], { type: 'text/csv;charset=utf-8' }));
+  a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const fN = v => fmt(v), fS = v => sgn(v), fP = v => v == null ? '—' : pf(v);
+const pctCsv = v => v == null ? '' : (v * 100).toFixed(2).replace('.', ',');
+
+function aggRows(map, name) {
+  return [...map.entries()].map(([k, v]) => ({ id: k, n: name(k), l: v[0], fa: v[1], co: v[2], dif: v[2] - v[1], falt: Math.max(0, v[1] - v[2]), pct: v[1] ? (v[2] - v[1]) / v[1] : null, ret: v[3], ifal: v[4], isob: v[5] }));
+}
+const pick = (key, val) => { F[key] = String(val); syncInputs(); render(); };
+
+function renderRutas() {
+  const dm = DB.dims;
+  hbar('c-tr', [...A.byTr.entries()].map(([k, v]) => [k, v]), k => dm.tr[k], k => pick('tr', k));
+  hbar('c-zona', [...A.byZona.entries()].map(([k, v]) => [k, v]), k => dm.zona[k], k => pick('zona', k));
+  const cov = {};
+  R.forEach(x => { cov[x.t] = cov[x.t] || [0, 0]; cov[x.t][1]++; if (x.cob === 'Contada') cov[x.t][0]++; });
+  const rows = aggRows(A.byTr, k => dm.tr[k]).map(r => Object.assign(r, { rc: (cov[r.id] || [0])[0], rp: (cov[r.id] || [0, 0])[1], cob: cov[r.id] && cov[r.id][1] ? cov[r.id][0] / cov[r.id][1] : null }));
+  table('tr', document.getElementById('t-tr'), [
+    { k: 'n', t: 'Transportista' }, { k: 'rc', t: 'Rutas contadas', num: 1, f: (v, r) => fmt(v) + ' / ' + fmt(r.rp) }, { k: 'cob', t: 'Cobertura', num: 1, f: fP },
+    { k: 'fa', t: 'Facturado', num: 1, f: fN }, { k: 'co', t: 'Conteo', num: 1, f: fN }, { k: 'dif', t: 'Diferencia', num: 1, sign: 1, f: fS }, { k: 'pct', t: '% Dif.', num: 1, f: fP },
+    { k: 'ifal', t: 'Ítems faltantes', num: 1, f: fN }, { k: 'isob', t: 'Ítems sobrantes', num: 1, f: fN }, { k: 'ret', t: 'Retornadas', num: 1, f: fN }], rows);
+  renderRutasTable();
+}
+const rutaCols = () => [
+  { k: 'dia', t: 'Día' }, { k: 'ruta', t: 'Ruta' }, { k: 'zona', t: 'Zona' }, { k: 'tr', t: 'Transportista' },
+  { k: 'cob', t: 'Cobertura', f: v => '<span class="tag ' + esc(v) + '">' + esc(v) + '</span>' }, { k: 'est', t: 'Estado conteo', f: v => v ? '<span class="tag ' + esc(v) + '">' + esc(v) + '</span>' : '' },
+  { k: 'lin', t: 'Líneas', num: 1, f: fN }, { k: 'lind', t: 'Líneas c/dif', num: 1, f: fN }, { k: 'fa', t: 'Facturado', num: 1, f: fN }, { k: 'co', t: 'Conteo', num: 1, f: fN },
+  { k: 'dif', t: 'Diferencia', num: 1, sign: 1, f: fS }, { k: 'pct', t: '% Dif.', num: 1, f: fP, csv: pctCsv }, { k: 'vol', t: 'Vol. esperado', num: 1, f: fN }];
+function rutaRows() {
+  const dm = DB.dims, cob = document.getElementById('r-cob').value, od = document.getElementById('r-dif').value;
+  return R.filter(x => (!cob || x.cob === cob) && (!od || x.dif !== 0)).map(x => ({ dia: dm.dia[x.d], ruta: dm.ruta[x.r], zona: dm.zona[x.z], tr: dm.tr[x.t], cob: x.cob, est: x.est, lin: x.lin, lind: x.lind, fa: x.fa, co: x.co, dif: x.dif, pct: x.fa ? x.dif / x.fa : null, vol: x.vol }));
+}
+function renderRutasTable() { table('rutas', document.getElementById('t-rutas'), rutaCols(), rutaRows(), 'pg-rutas'); }
+document.getElementById('r-csv').onclick = () => csv('rutas_por_dia.csv', rutaCols(), rutaRows());
+
+const prodCols = () => [
+  { k: 'cod', t: 'Código' }, { k: 'n', t: 'Descripción' }, { k: 'l', t: 'Líneas', num: 1, f: fN }, { k: 'fa', t: 'Facturado', num: 1, f: fN }, { k: 'co', t: 'Conteo', num: 1, f: fN },
+  { k: 'dif', t: 'Diferencia', num: 1, sign: 1, f: fS }, { k: 'pct', t: '% Dif.', num: 1, f: fP, csv: pctCsv }, { k: 'ifal', t: 'Ítems faltantes', num: 1, f: fN }, { k: 'isob', t: 'Ítems sobrantes', num: 1, f: fN }, { k: 'ret', t: 'Retornadas', num: 1, f: fN }];
+function prodRows() {
+  const dm = DB.dims, q = document.getElementById('p-q').value.trim().toLowerCase();
+  return aggRows(A.byProd, k => dm.mat[k]).map(r => Object.assign(r, { cod: dm.cod[r.id] })).filter(r => !q || (r.cod + ' ' + r.n).toLowerCase().includes(q));
+}
+function renderProductos() {
+  hbar('c-prod', [...A.byProd.entries()], k => DB.dims.cod[k] + ' · ' + DB.dims.mat[k], k => { F.prod = String(k); document.getElementById('f-prod').value = DB.prodLabel[k]; render(); });
+  renderProdTable();
+}
+function renderProdTable() { table('prod', document.getElementById('t-prod'), prodCols(), prodRows(), 'pg-prod'); }
+document.getElementById('p-csv').onclick = () => csv('productos.csv', prodCols(), prodRows());
+
+const adjCols = () => [
+  { k: 'dia', t: 'Día' }, { k: 'ruta', t: 'Ruta' }, { k: 'zona', t: 'Zona' }, { k: 'tr', t: 'Transportista' }, { k: 'ent', t: 'Entrega' }, { k: 'fac', t: 'Factura' }, { k: 'doc', t: 'Doc. tributario' },
+  { k: 'cod', t: 'Código' }, { k: 'mat', t: 'Descripción' }, { k: 'est', t: 'Estado', f: v => '<span class="tag ' + esc(v) + '">' + esc(v) + '</span>' },
+  { k: 'fa', t: 'Facturado', num: 1, f: fN }, { k: 'co', t: 'Conteo', num: 1, f: fN }, { k: 'dif', t: 'Ajuste', num: 1, sign: 1, f: fS }, { k: 'pct', t: '% Dif.', num: 1, f: fP, csv: pctCsv }, { k: 'ret', t: 'Retornadas', num: 1, f: fN }];
+function adjRows() {
+  const dm = DB.dims, mask = A.dm, pm = A.pm, est = document.getElementById('a-est').value, q = document.getElementById('a-q').value.trim().toLowerCase();
+  const out = [];
+  for (const a of DB.adj) {
+    const [d, r, z, t, c, ent, fac, doc, e, fa, co, ret] = a;
+    if (!mask[d] || !eqOr(F.tr, t) || !eqOr(F.zona, z) || !eqOr(F.ruta, r) || (pm && !pm[c])) continue;
+    if (est === 'ret' ? !(ret > 0) : est && e !== est) continue;
+    const row = { dia: dm.dia[d], ruta: dm.ruta[r], zona: dm.zona[z], tr: dm.tr[t], ent, fac, doc, cod: dm.cod[c], mat: dm.mat[c], est: e, fa, co, dif: co - fa, pct: fa ? (co - fa) / fa : null, ret };
+    if (q && !Object.values(row).join(' ').toLowerCase().includes(q)) continue;
+    out.push(row);
+  }
+  return out;
+}
+function renderAdj() { table('adj', document.getElementById('t-adj'), adjCols(), adjRows(), 'pg-adj'); }
+document.getElementById('a-csv').onclick = () => csv('ajustes.csv', adjCols(), adjRows());
+</script>
+</body>
+</html>
