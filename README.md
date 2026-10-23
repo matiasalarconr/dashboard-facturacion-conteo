@@ -17,16 +17,21 @@ Filtros globales: mes, rango de fechas, transportista, zona, ruta y producto. To
 ## Subir un reporte nuevo (acumulado)
 
 1. En el panel pulsa **⬆ Subir reporte** y arrastra el Excel. El panel valida el formato y muestra el período.
-2. La primera vez pega la **clave de carga** (se guarda solo en ese navegador) y pulsa **Subir**.
+2. Pulsa **Subir**. No se pide clave.
 3. El archivo se guarda en [`excels/`](excels), la Action *Publicar dashboard* recalcula el acumulado y el panel se recarga solo (1–2 min).
 
-### Clave de carga
+Para quitar un reporte: pestaña **Reportes cargados** → **Eliminar**.
 
-Es un *fine-grained personal access token* de GitHub: https://github.com/settings/personal-access-tokens/new
+### Intermediario (Cloudflare Worker)
 
-- **Repository access:** Only select repositories → `dashboard-facturacion-conteo`
-- **Permissions → Repository permissions → Contents:** Read and write
-- Nunca la pegues en el código ni en el repositorio (es público).
+GitHub no acepta escrituras anónimas, así que el panel sube y elimina a través de [`worker/`](worker), publicado en
+`https://dashboard-facturacion-upload.matias-alarcon3.workers.dev`. El worker guarda como secreto un *fine-grained
+personal access token* (solo este repositorio, **Contents: Read and write**) y solo permite tocar archivos `.xlsx` en `excels/`.
+Cualquiera con el link del panel puede subir o eliminar reportes.
+
+- Volver a publicar el worker: `cd worker && npx wrangler deploy`
+- Cambiar la clave: `cd worker && npx wrangler secret put GITHUB_TOKEN`
+- Nunca pongas la clave en el código ni en el repositorio (es público).
 
 ### Sin duplicados
 
