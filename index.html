@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Facturación vs Conteo</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <style>
 :root {
   color-scheme: light;
@@ -111,6 +112,30 @@ td.pos { color: var(--good); font-weight: 600; }
 #loading { padding: 60px; text-align: center; color: var(--ink-2); }
 .note { color: var(--muted); font-size: 12px; margin-top: 8px; }
 footer { color: var(--muted); font-size: 12px; margin-top: 28px; }
+
+/* Carga de reportes */
+dialog#up { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--ink); padding: 0; width: min(560px, calc(100vw - 32px)); }
+dialog#up::backdrop { background: rgba(0,0,0,.45); }
+.up-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.up-head h2 { margin: 0; font-size: 16px; }
+.up-body { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 14px; }
+.drop { border: 2px dashed var(--axis); border-radius: 12px; padding: 28px 16px; text-align: center; color: var(--ink-2); cursor: pointer; }
+.drop.over { border-color: var(--accent); background: var(--surface-2); }
+.drop b { color: var(--ink); }
+.up-info { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.up-info .err { color: var(--bad); font-weight: 600; }
+.up-key { display: flex; flex-direction: column; gap: 4px; }
+.up-key input[type=password] { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; }
+.up-key small, .up-key label.chk { color: var(--ink-2); font-size: 12px; }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.steps li { color: var(--muted); }
+.steps li.on { color: var(--ink); font-weight: 600; }
+.steps li.ok { color: var(--good); }
+.steps li.bad { color: var(--bad); font-weight: 600; }
+.up-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--border); }
+.linkbtn { font: inherit; background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -121,7 +146,7 @@ footer { color: var(--muted); font-size: 12px; margin-top: 28px; }
       <div class="sub" id="periodo">Cargando…</div>
     </div>
     <div style="display:flex;gap:8px">
-      <a class="btn" href="https://github.com/matiasalarconr/dashboard-facturacion-conteo/upload/main/excels" target="_blank" rel="noopener" style="text-decoration:none">⬆ Subir reporte</a>
+      <button class="btn" id="up-open">⬆ Subir reporte</button>
       <button class="icon-btn" id="theme" title="Cambiar tema">◐ Tema</button>
     </div>
   </header>
@@ -261,16 +286,16 @@ footer { color: var(--muted); font-size: 12px; margin-top: 28px; }
     <div class="grid">
       <div class="card c8">
         <h2>Reportes en el acumulado</h2>
-        <div class="desc">Si dos reportes cubren el mismo día, se usa el generado más recientemente; el otro queda reemplazado para esos días.</div>
+        <div class="desc">Sin duplicados: si una misma línea (día, ruta, zona, transportista, entrega, factura y código) viene en dos reportes, se cuenta una sola vez con los valores del generado más recientemente. Un reporte completo más nuevo reemplaza todos los días de su rango.</div>
         <div class="tbl-wrap"><table id="t-rep"></table></div>
       </div>
       <div class="card c4">
         <h2>Cómo subir un reporte nuevo</h2>
         <ol style="padding-left:18px;margin:10px 0 0;color:var(--ink-2)">
           <li>Descarga el Excel del sistema (mismo formato: hojas Resumen, Por ruta y Detalle).</li>
-          <li>Pulsa <b>⬆ Subir reporte</b> (requiere cuenta de GitHub con permiso de escritura en el repositorio).</li>
-          <li>Arrastra el archivo y pulsa <b>Commit changes</b>.</li>
-          <li>En 2–4 minutos el panel se recalcula solo. Recarga la página.</li>
+          <li>Pulsa <b>⬆ Subir reporte</b> y arrastra el archivo.</li>
+          <li>La primera vez pega tu <b>clave de carga</b>; queda guardada en tu navegador.</li>
+          <li>Pulsa <b>Subir</b>. En 1–2 minutos el panel se recalcula y se recarga solo.</li>
         </ol>
         <p class="note">Puedes volver a subir un mes que ya existe (por ejemplo, octubre completo): reemplaza los días que se solapan sin duplicar.</p>
       </div>
@@ -279,6 +304,35 @@ footer { color: var(--muted); font-size: 12px; margin-top: 28px; }
 
   <footer id="foot"></footer>
 </div>
+
+<dialog id="up">
+  <div class="up-head"><h2>Subir reporte Excel</h2><button class="icon-btn" id="up-close" aria-label="Cerrar">✕</button></div>
+  <div class="up-body">
+    <label class="drop" id="up-drop">
+      <input type="file" id="up-file" accept=".xlsx" hidden>
+      <div><b>Arrastra aquí el Excel</b> o haz clic para elegirlo</div>
+      <div style="font-size:12px;margin-top:4px">reporte_facturacion_conteo_….xlsx (hojas Resumen, Por ruta y Detalle)</div>
+    </label>
+    <div class="up-info" id="up-info" hidden></div>
+    <div class="up-key" id="up-keybox">
+      <label for="up-key" style="font-size:12px;font-weight:600;color:var(--ink-2)">Clave de carga</label>
+      <input type="password" id="up-key" autocomplete="off" placeholder="github_pat_…">
+      <label class="chk"><input type="checkbox" id="up-remember" checked> Recordar en este equipo</label>
+      <small>Solo la primera vez. Si no tienes clave, pídesela a quien administra el panel.</small>
+    </div>
+    <div id="up-keysaved" hidden style="font-size:12px;color:var(--ink-2)">Clave de carga guardada en este equipo. <button class="linkbtn" id="up-forget">Cambiar u olvidar</button></div>
+    <ul class="steps" id="up-steps" hidden>
+      <li data-s="0">1. Validar el archivo</li>
+      <li data-s="1">2. Subir al repositorio</li>
+      <li data-s="2">3. Recalcular el acumulado y publicar</li>
+      <li data-s="3">4. Recargar el panel</li>
+    </ul>
+    <div class="up-actions">
+      <button class="btn ghost" id="up-cancel">Cerrar</button>
+      <button class="btn" id="up-go" disabled>Subir</button>
+    </div>
+  </div>
+</dialog>
 
 <script>
 const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -304,7 +358,7 @@ document.getElementById('theme').onclick = () => {
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
 // ---------- Carga ----------
-fetch('data.json').then(r => r.json()).then(d => {
+fetch('data.json', { cache: 'no-cache' }).then(r => r.json()).then(d => {
   DB = d;
   const dm = d.dims;
   DB.diaMes = dm.dia.map(x => x.slice(0, 7));
@@ -315,8 +369,9 @@ fetch('data.json').then(r => r.json()).then(d => {
   const dias = dm.dia.filter(Boolean).sort(), dmy = s => fecha(s) + '-' + s.slice(0, 4);
   document.getElementById('periodo').textContent = 'Período ' + dmy(dias[0]) + ' al ' + dmy(dias[dias.length - 1]) + ' · ' + d.meta.length + ' reportes cargados';
   document.getElementById('foot').textContent = 'Datos de ' + d.meta.length + ' reportes Excel (hoja Detalle y Por ruta). Ver pestaña "Reportes cargados".';
-  document.getElementById('t-rep').innerHTML = '<thead><tr><th>Archivo</th><th>Desde</th><th>Hasta</th><th>Generado</th><th class="num">Líneas usadas</th></tr></thead><tbody>' +
-    d.meta.map(x => '<tr><td>' + esc(x.archivo) + '</td><td>' + esc(x.desde) + '</td><td>' + esc(x.hasta) + '</td><td>' + esc(x.generado) + '</td><td class="num">' + (x.lineas ? fmt(x.lineas) : '<span class="tag Pendiente">Reemplazado</span>') + '</td></tr>').join('') + '</tbody>';
+  document.getElementById('t-rep').innerHTML = '<thead><tr><th>Archivo</th><th>Desde</th><th>Hasta</th><th>Generado</th><th>Tipo</th><th class="num">Líneas leídas</th><th class="num">Líneas vigentes</th></tr></thead><tbody>' +
+    d.meta.map(x => '<tr><td>' + esc(x.archivo) + '</td><td>' + esc(x.desde) + '</td><td>' + esc(x.hasta) + '</td><td>' + esc(x.generado) + '</td><td>' + (x.completo === false ? 'Filtrado' : 'Completo') + '</td><td class="num">' + fmt(x.leidas || 0) + '</td><td class="num">' +
+      (x.lineas ? fmt(x.lineas) + (x.leidas && x.lineas < x.leidas ? ' <span class="tag Pendiente">parcialmente reemplazado</span>' : '') : '<span class="tag Pendiente">Reemplazado</span>') + '</td></tr>').join('') + '</tbody>';
   render();
 }).catch(e => { document.getElementById('loading').textContent = 'No se pudieron cargar los datos: ' + e.message; });
 
@@ -602,6 +657,123 @@ function adjRows() {
 }
 function renderAdj() { table('adj', document.getElementById('t-adj'), adjCols(), adjRows(), 'pg-adj'); }
 document.getElementById('a-csv').onclick = () => csv('ajustes.csv', adjCols(), adjRows());
+
+// ---------- Subir reporte (sube el Excel a excels/ vía API de GitHub; la Action recalcula y publica) ----------
+const REPO = 'matiasalarconr/dashboard-facturacion-conteo', BRANCH = 'main', KEY_STORE = 'fc-upload-key';
+const up = {
+  dlg: document.getElementById('up'), file: document.getElementById('up-file'), drop: document.getElementById('up-drop'),
+  info: document.getElementById('up-info'), key: document.getElementById('up-key'), go: document.getElementById('up-go'),
+  steps: document.getElementById('up-steps'), selected: null, meta: null, busy: false,
+};
+const savedKey = () => { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } };
+function showKeyState() {
+  const has = !!savedKey();
+  document.getElementById('up-keybox').hidden = has;
+  document.getElementById('up-keysaved').hidden = !has;
+}
+function upInfo(html) { up.info.hidden = !html; up.info.innerHTML = html || ''; }
+function upStep(i, state) {
+  up.steps.hidden = false;
+  up.steps.querySelectorAll('li').forEach(li => {
+    const s = +li.dataset.s;
+    li.className = s < i ? 'ok' : s === i ? state || 'on' : '';
+  });
+}
+function upReady() { up.go.disabled = up.busy || !up.meta || !(savedKey() || up.key.value.trim()); }
+
+document.getElementById('up-open').onclick = () => {
+  if (!up.busy) { up.selected = up.meta = null; upInfo(''); up.steps.hidden = true; up.file.value = ''; }
+  showKeyState(); upReady(); up.dlg.showModal();
+};
+for (const id of ['up-close', 'up-cancel']) document.getElementById(id).onclick = () => up.dlg.close();
+document.getElementById('up-forget').onclick = () => { try { localStorage.removeItem(KEY_STORE); } catch (e) {} up.key.value = ''; showKeyState(); upReady(); };
+up.key.oninput = upReady;
+up.file.onchange = () => up.file.files[0] && pickFile(up.file.files[0]);
+up.drop.ondragover = e => { e.preventDefault(); up.drop.classList.add('over'); };
+up.drop.ondragleave = () => up.drop.classList.remove('over');
+up.drop.ondrop = e => { e.preventDefault(); up.drop.classList.remove('over'); if (e.dataTransfer.files[0]) pickFile(e.dataTransfer.files[0]); };
+
+// Lee solo la hoja Resumen para confirmar el formato y mostrar el período antes de subir
+async function pickFile(f) {
+  if (up.busy) return;
+  up.selected = f; up.meta = null; up.steps.hidden = true; upReady();
+  if (!/\.xlsx$/i.test(f.name)) { upInfo('<span class="err">El archivo debe ser .xlsx</span>'); return; }
+  upInfo('Revisando <b>' + esc(f.name) + '</b>…');
+  try {
+    const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', sheets: ['Resumen'] });
+    const res = wb.Sheets.Resumen ? XLSX.utils.sheet_to_json(wb.Sheets.Resumen, { header: 1, defval: null }) : null;
+    const missing = ['Resumen', 'Por ruta', 'Detalle'].filter(n => !wb.SheetNames.includes(n));
+    if (!res || missing.length) { upInfo('<span class="err">No tiene el formato esperado. Faltan las hojas: ' + esc(missing.join(', ')) + '</span>'); return; }
+    const get = l => (res.find(r => r[0] === l) || [])[1];
+    const items = get('Ítems contados');
+    up.meta = { desde: String(get('Desde') || ''), hasta: String(get('Hasta') || ''), generado: String((res[1] || [])[0] || '').replace('Generado el ', '') };
+    const solapa = DB && DB.meta.filter(m => m.desde <= up.meta.hasta && m.hasta >= up.meta.desde).map(m => m.archivo);
+    upInfo('<b>' + esc(f.name) + '</b> · ' + (f.size / 1048576).toFixed(1) + ' MB<br>Período ' + esc(up.meta.desde) + ' al ' + esc(up.meta.hasta) +
+      (items ? ' · ' + fmt(items) + ' ítems contados' : '') + '<br>Generado ' + esc(up.meta.generado) +
+      (solapa && solapa.length ? '<br><span style="color:var(--warn)">Se solapa con: ' + esc(solapa.join(', ')) + '. Las líneas repetidas no se duplican: se usan las del reporte generado más recientemente.</span>' : ''));
+  } catch (e) { upInfo('<span class="err">No se pudo leer el Excel: ' + esc(e.message) + '</span>'); }
+  upReady();
+}
+
+async function gh(path, opts = {}) {
+  const r = await fetch('https://api.github.com/repos/' + REPO + path, Object.assign({}, opts, {
+    headers: Object.assign({ Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + (savedKey() || up.key.value.trim()), 'X-GitHub-Api-Version': '2022-11-28' }, opts.headers || {}),
+  }));
+  if (!r.ok) {
+    const msg = r.status === 401 ? 'La clave de carga no es válida o expiró.' : r.status === 403 || r.status === 404 ? 'La clave no tiene permiso para escribir en el repositorio.' : 'GitHub respondió ' + r.status + '.';
+    const err = new Error(msg); err.status = r.status; throw err;
+  }
+  return r.status === 204 ? null : r.json();
+}
+const toBase64 = f => new Promise((ok, ko) => { const rd = new FileReader(); rd.onload = () => ok(String(rd.result).split(',')[1]); rd.onerror = () => ko(rd.error); rd.readAsDataURL(f); });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+up.go.onclick = async () => {
+  const f = up.selected; if (!f || !up.meta) return;
+  const typed = up.key.value.trim();
+  up.busy = true; upReady();
+  let step = 0;
+  try {
+    upStep(0);
+    // Se guarda la clave recién después de que GitHub la acepte
+    const repo = await gh('');
+    if (repo.permissions && !repo.permissions.push) { const e = new Error('La clave no tiene permiso para escribir en el repositorio.'); e.status = 403; throw e; }
+    if (typed && document.getElementById('up-remember').checked) { try { localStorage.setItem(KEY_STORE, typed); } catch (e) {} }
+    showKeyState();
+
+    step = 1; upStep(1);
+    const name = f.name.replace(/[^\w.\-]+/g, '_');
+    let sha;
+    try { sha = (await gh('/contents/excels/' + encodeURIComponent(name) + '?ref=' + BRANCH)).sha; } catch (e) { if (e.status !== 404) throw e; }
+    const put = await gh('/contents/excels/' + encodeURIComponent(name), {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'Subir reporte ' + name + ' (' + up.meta.desde + ' a ' + up.meta.hasta + ')', content: await toBase64(f), branch: BRANCH, sha }),
+    });
+    const commit = put.commit.sha;
+
+    step = 2; upStep(2);
+    upInfo('Archivo subido. Recalculando el acumulado; suele tardar 1–2 minutos. Puedes cerrar esta ventana: el panel se recargará igual.');
+    const t0 = Date.now();
+    let run;
+    while (Date.now() - t0 < 10 * 60 * 1000) {
+      await sleep(6000);
+      run = ((await gh('/actions/runs?head_sha=' + commit)).workflow_runs || [])[0];
+      if (run && run.status === 'completed') break;
+    }
+    if (!run || run.status !== 'completed') throw new Error('El recálculo está tardando más de lo normal. Revisa más tarde y recarga la página.');
+    if (run.conclusion !== 'success') throw new Error('El recálculo falló (' + run.conclusion + '). El archivo quedó guardado; avisa a quien administra el panel.');
+
+    step = 3; upStep(3);
+    upInfo('Listo. Recargando el panel con los datos nuevos…');
+    await sleep(2500);
+    location.reload();
+  } catch (e) {
+    upStep(step, 'bad');
+    upInfo('<span class="err">' + esc(e.message) + '</span>');
+    if (e.status === 401 && !typed) { try { localStorage.removeItem(KEY_STORE); } catch (x) {} showKeyState(); }
+    up.busy = false; upReady();
+  }
+};
 </script>
 </body>
 </html>
