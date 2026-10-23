@@ -1,0 +1,6 @@
+name = "dashboard-facturacion-upload"
+main = "index.js"
+compatibility_date = "2025-09-01"
+
+# La clave de GitHub NO va aquí. Se guarda como secreto con:
+#   npx wrangler secret put GITHUB_TOKEN
