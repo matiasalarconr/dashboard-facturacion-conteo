@@ -135,6 +135,10 @@ dialog#up::backdrop { background: rgba(0,0,0,.45); }
 .up-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn.ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--border); }
+.btn.danger { background: var(--bad); }
+.del-btn { font: inherit; font-size: 12px; background: transparent; color: var(--bad); border: 1px solid var(--bad); border-radius: 7px; padding: 3px 10px; cursor: pointer; }
+.del-btn:hover { background: var(--bad-soft); }
+.del-btn:disabled { opacity: .4; cursor: default; background: transparent; }
 .linkbtn { font: inherit; background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; font-size: 12px; }
 </style>
 </head>
@@ -306,7 +310,7 @@ dialog#up::backdrop { background: rgba(0,0,0,.45); }
 </div>
 
 <dialog id="up">
-  <div class="up-head"><h2>Subir reporte Excel</h2><button class="icon-btn" id="up-close" aria-label="Cerrar">✕</button></div>
+  <div class="up-head"><h2 id="up-title">Subir reporte Excel</h2><button class="icon-btn" id="up-close" aria-label="Cerrar">✕</button></div>
   <div class="up-body">
     <label class="drop" id="up-drop">
       <input type="file" id="up-file" accept=".xlsx" hidden>
@@ -322,8 +326,8 @@ dialog#up::backdrop { background: rgba(0,0,0,.45); }
     </div>
     <div id="up-keysaved" hidden style="font-size:12px;color:var(--ink-2)">Clave de carga guardada en este equipo. <button class="linkbtn" id="up-forget">Cambiar u olvidar</button></div>
     <ul class="steps" id="up-steps" hidden>
-      <li data-s="0">1. Validar el archivo</li>
-      <li data-s="1">2. Subir al repositorio</li>
+      <li data-s="0">1. Verificar la clave de carga</li>
+      <li data-s="1" id="up-step1">2. Subir al repositorio</li>
       <li data-s="2">3. Recalcular el acumulado y publicar</li>
       <li data-s="3">4. Recargar el panel</li>
     </ul>
@@ -369,9 +373,12 @@ fetch('data.json', { cache: 'no-cache' }).then(r => r.json()).then(d => {
   const dias = dm.dia.filter(Boolean).sort(), dmy = s => fecha(s) + '-' + s.slice(0, 4);
   document.getElementById('periodo').textContent = 'Período ' + dmy(dias[0]) + ' al ' + dmy(dias[dias.length - 1]) + ' · ' + d.meta.length + ' reportes cargados';
   document.getElementById('foot').textContent = 'Datos de ' + d.meta.length + ' reportes Excel (hoja Detalle y Por ruta). Ver pestaña "Reportes cargados".';
-  document.getElementById('t-rep').innerHTML = '<thead><tr><th>Archivo</th><th>Desde</th><th>Hasta</th><th>Generado</th><th>Tipo</th><th class="num">Líneas leídas</th><th class="num">Líneas vigentes</th></tr></thead><tbody>' +
-    d.meta.map(x => '<tr><td>' + esc(x.archivo) + '</td><td>' + esc(x.desde) + '</td><td>' + esc(x.hasta) + '</td><td>' + esc(x.generado) + '</td><td>' + (x.completo === false ? 'Filtrado' : 'Completo') + '</td><td class="num">' + fmt(x.leidas || 0) + '</td><td class="num">' +
-      (x.lineas ? fmt(x.lineas) + (x.leidas && x.lineas < x.leidas ? ' <span class="tag Pendiente">parcialmente reemplazado</span>' : '') : '<span class="tag Pendiente">Reemplazado</span>') + '</td></tr>').join('') + '</tbody>';
+  const solo = d.meta.length < 2;
+  document.getElementById('t-rep').innerHTML = '<thead><tr><th>Archivo</th><th>Desde</th><th>Hasta</th><th>Generado</th><th>Tipo</th><th class="num">Líneas leídas</th><th class="num">Líneas vigentes</th><th></th></tr></thead><tbody>' +
+    d.meta.map((x, i) => '<tr><td>' + esc(x.archivo) + '</td><td>' + esc(x.desde) + '</td><td>' + esc(x.hasta) + '</td><td>' + esc(x.generado) + '</td><td>' + (x.completo === false ? 'Filtrado' : 'Completo') + '</td><td class="num">' + fmt(x.leidas || 0) + '</td><td class="num">' +
+      (x.lineas ? fmt(x.lineas) + (x.leidas && x.lineas < x.leidas ? ' <span class="tag Pendiente">parcialmente reemplazado</span>' : '') : '<span class="tag Pendiente">Reemplazado</span>') + '</td>' +
+      '<td><button class="del-btn" data-i="' + i + '"' + (solo ? ' disabled title="Debe quedar al menos un reporte"' : '') + '>Eliminar</button></td></tr>').join('') + '</tbody>';
+  document.getElementById('t-rep').onclick = e => { const b = e.target.closest('.del-btn'); if (b && !b.disabled) openDelete(d.meta[+b.dataset.i]); };
   render();
 }).catch(e => { document.getElementById('loading').textContent = 'No se pudieron cargar los datos: ' + e.message; });
 
@@ -679,12 +686,32 @@ function upStep(i, state) {
     li.className = s < i ? 'ok' : s === i ? state || 'on' : '';
   });
 }
-function upReady() { up.go.disabled = up.busy || !up.meta || !(savedKey() || up.key.value.trim()); }
+function upReady() { up.go.disabled = up.busy || !(up.mode === 'delete' ? up.target : up.meta) || !(savedKey() || up.key.value.trim()); }
 
+// La misma ventana sirve para subir y para eliminar
+function setMode(mode) {
+  up.mode = mode;
+  const del = mode === 'delete';
+  document.getElementById('up-title').textContent = del ? 'Eliminar reporte' : 'Subir reporte Excel';
+  document.getElementById('up-step1').textContent = del ? '2. Eliminar del repositorio' : '2. Subir al repositorio';
+  up.drop.hidden = del;
+  up.go.textContent = del ? 'Eliminar' : 'Subir';
+  up.go.classList.toggle('danger', del);
+}
 document.getElementById('up-open').onclick = () => {
-  if (!up.busy) { up.selected = up.meta = null; upInfo(''); up.steps.hidden = true; up.file.value = ''; }
+  if (up.busy) { up.dlg.showModal(); return; }
+  setMode('upload');
+  up.selected = up.meta = up.target = null; upInfo(''); up.steps.hidden = true; up.file.value = '';
   showKeyState(); upReady(); up.dlg.showModal();
 };
+function openDelete(m) {
+  if (up.busy) { up.dlg.showModal(); return; }
+  setMode('delete');
+  up.target = m; up.steps.hidden = true;
+  upInfo('Vas a eliminar <b>' + esc(m.archivo) + '</b><br>Período ' + esc(m.desde) + ' al ' + esc(m.hasta) + ' · generado ' + esc(m.generado) + ' · ' + fmt(m.lineas || 0) + ' líneas vigentes' +
+    '<br><span style="color:var(--warn)">Sus líneas dejarán de contarse. Si otro reporte cubre esos días, el panel usará los datos de ese otro reporte.</span>');
+  showKeyState(); upReady(); up.dlg.showModal();
+}
 for (const id of ['up-close', 'up-cancel']) document.getElementById(id).onclick = () => up.dlg.close();
 document.getElementById('up-forget').onclick = () => { try { localStorage.removeItem(KEY_STORE); } catch (e) {} up.key.value = ''; showKeyState(); upReady(); };
 up.key.oninput = upReady;
@@ -728,8 +755,33 @@ async function gh(path, opts = {}) {
 const toBase64 = f => new Promise((ok, ko) => { const rd = new FileReader(); rd.onload = () => ok(String(rd.result).split(',')[1]); rd.onerror = () => ko(rd.error); rd.readAsDataURL(f); });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// Cada acción modifica excels/ y devuelve el commit; luego se espera a que la Action publique
+async function subirArchivo() {
+  const f = up.selected;
+  const name = f.name.replace(/[^\w.\-]+/g, '_');
+  let sha;
+  try { sha = (await gh('/contents/excels/' + encodeURIComponent(name) + '?ref=' + BRANCH)).sha; } catch (e) { if (e.status !== 404) throw e; }
+  const put = await gh('/contents/excels/' + encodeURIComponent(name), {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: 'Subir reporte ' + name + ' (' + up.meta.desde + ' a ' + up.meta.hasta + ')', content: await toBase64(f), branch: BRANCH, sha }),
+  });
+  return { commit: put.commit.sha, msg: 'Archivo subido.' };
+}
+async function eliminarArchivo() {
+  const m = up.target, p = '/contents/excels/' + encodeURIComponent(m.archivo);
+  let sha;
+  try { sha = (await gh(p + '?ref=' + BRANCH)).sha; } catch (e) { if (e.status === 404) throw new Error('El archivo ya no existe en el repositorio. Recarga la página.'); throw e; }
+  const del = await gh(p, {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: 'Eliminar reporte ' + m.archivo + ' (' + m.desde + ' a ' + m.hasta + ')', sha, branch: BRANCH }),
+  });
+  return { commit: del.commit.sha, msg: 'Reporte eliminado.' };
+}
+
 up.go.onclick = async () => {
-  const f = up.selected; if (!f || !up.meta) return;
+  const del = up.mode === 'delete';
+  if (del ? !up.target : !up.selected || !up.meta) return;
+  if (del && !confirm('¿Eliminar el reporte ' + up.target.archivo + '? Sus datos dejarán de aparecer en el panel.')) return;
   const typed = up.key.value.trim();
   up.busy = true; upReady();
   let step = 0;
@@ -742,17 +794,10 @@ up.go.onclick = async () => {
     showKeyState();
 
     step = 1; upStep(1);
-    const name = f.name.replace(/[^\w.\-]+/g, '_');
-    let sha;
-    try { sha = (await gh('/contents/excels/' + encodeURIComponent(name) + '?ref=' + BRANCH)).sha; } catch (e) { if (e.status !== 404) throw e; }
-    const put = await gh('/contents/excels/' + encodeURIComponent(name), {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Subir reporte ' + name + ' (' + up.meta.desde + ' a ' + up.meta.hasta + ')', content: await toBase64(f), branch: BRANCH, sha }),
-    });
-    const commit = put.commit.sha;
+    const { commit, msg } = await (del ? eliminarArchivo() : subirArchivo());
 
     step = 2; upStep(2);
-    upInfo('Archivo subido. Recalculando el acumulado; suele tardar 1–2 minutos. Puedes cerrar esta ventana: el panel se recargará igual.');
+    upInfo(msg + ' Recalculando el acumulado; suele tardar 1–2 minutos. Puedes cerrar esta ventana: el panel se recargará igual.');
     const t0 = Date.now();
     let run;
     while (Date.now() - t0 < 10 * 60 * 1000) {
@@ -761,7 +806,7 @@ up.go.onclick = async () => {
       if (run && run.status === 'completed') break;
     }
     if (!run || run.status !== 'completed') throw new Error('El recálculo está tardando más de lo normal. Revisa más tarde y recarga la página.');
-    if (run.conclusion !== 'success') throw new Error('El recálculo falló (' + run.conclusion + '). El archivo quedó guardado; avisa a quien administra el panel.');
+    if (run.conclusion !== 'success') throw new Error('El recálculo falló (' + run.conclusion + '). El cambio quedó guardado en el repositorio; avisa a quien administra el panel.');
 
     step = 3; upStep(3);
     upInfo('Listo. Recargando el panel con los datos nuevos…');
